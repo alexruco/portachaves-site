@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Portachaves - Candidatura</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 500px; margin: 40px auto; padding: 20px; color: #333; }
+    form { display: flex; flex-direction: column; gap: 12px; }
+    input, select, button { padding: 12px; font-size: 15px; border: 1px solid #ccc; border-radius: 6px; }
+    button { background: #111; color: white; border: none; cursor: pointer; font-weight: 600; }
+    button:hover { background: #333; }
+  </style>
+</head>
+<body>
+  <nav><a href="dashboard.html">Painel de gestão</a></nav>
+  <h2>Candidate-se ao imóvel</h2>
+  <form id="tenantForm">
+    <input type="text" id="name" placeholder="Nome Completo" required>
+    <input type="email" id="email" placeholder="E-mail" required>
+    <input type="tel" id="phone" placeholder="Telemóvel (WhatsApp)" required>
+    <input type="number" id="income" min="1" step="0.01" placeholder="Rendimento Líquido Mensal (€)" required>
+    <input type="number" id="occupants" min="1" step="1" placeholder="Nº de Pessoas no Agregado" required>
+    <select id="employment">
+      <option value="Efetivo">Contrato Efetivo</option>
+      <option value="Recibos Verdes">Recibos Verdes / Independente</option>
+      <option value="Estudante">Estudante / Outro</option>
+    </select>
+    <button type="submit">Submeter candidatura</button>
+  </form>
+  <p id="feedback" role="status" aria-live="polite"></p>
+
+  <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const propertyId = urlParams.get('property_id');
+
+    const form = document.getElementById('tenantForm');
+    const feedback = document.getElementById('feedback');
+    if (!propertyId) {
+      feedback.textContent = 'Abra o link de candidatura de um imóvel.';
+      form.querySelector('button').disabled = true;
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const button = form.querySelector('button');
+      button.disabled = true;
+      feedback.textContent = 'A submeter candidatura...';
+      try {
+        const { error } = await db.rpc('submit_application', {
+          p_property_id: propertyId,
+          p_full_name: document.getElementById('name').value.trim(),
+          p_email: document.getElementById('email').value.trim(),
+          p_phone: document.getElementById('phone').value.trim(),
+          p_monthly_income: Number(document.getElementById('income').value),
+          p_occupants_count: Number(document.getElementById('occupants').value),
+          p_employment_type: document.getElementById('employment').value
+        });
+        if (error) throw error;
+        feedback.textContent = 'Candidatura submetida com sucesso!';
+        form.reset();
+      } catch (error) {
+        feedback.textContent = 'Não foi possível submeter a candidatura: ' + error.message;
+      } finally {
+        button.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
