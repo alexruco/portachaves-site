@@ -24,7 +24,7 @@
   </form>
   <section id="panel" hidden>
     <button id="logout" type="button">Terminar sessão</button>
-    <table><thead><tr><th>Nome</th><th>Imóvel</th><th>Rendimento</th><th>Taxa de esforço</th><th>Situação</th><th>Estado</th><th>Ações</th></tr></thead><tbody id="applicationsBody"></tbody></table>
+    <table><thead><tr><th>Nome</th><th>Imóvel</th><th>Rendimento</th><th>Renda pretendida</th><th>Taxa de esforço</th><th>Situação profissional</th><th>Nacionalidade</th><th>Documentação</th><th>Estado</th><th>Ações</th></tr></thead><tbody id="applicationsBody"></tbody></table>
   </section>
   <p id="feedback" role="status" aria-live="polite"></p>
   <script>
@@ -74,7 +74,7 @@
 
     async function loadApplications() {
       const { data, error } = await db.from('applications')
-        .select('id,status,profiles(full_name,email,phone,monthly_income,employment_type),properties(title,monthly_rent,landlord_email)')
+        .select('id,status,profiles(full_name,email,phone,monthly_income,employment_type,nationality,document_status,rent_budget),properties(title,monthly_rent,landlord_email)')
         .order('created_at', { ascending: false });
       if (error) throw error;
       tbody.replaceChildren();
@@ -86,10 +86,13 @@
         cell(tr, profile.full_name);
         cell(tr, property.title);
         cell(tr, `${profile.monthly_income} €`);
+        cell(tr, profile.rent_budget == null ? '—' : `${profile.rent_budget} €`);
         const income = Number(profile.monthly_income);
         const rent = Number(property.monthly_rent);
         cell(tr, income > 0 && Number.isFinite(rent) ? `${(rent / income * 100).toFixed(1)}%` : '—');
         cell(tr, profile.employment_type);
+        cell(tr, profile.nationality);
+        cell(tr, ({pronta:'Pronta',em_preparacao:'Em preparação',a_esclarecer:'A esclarecer'})[profile.document_status] || '—');
         cell(tr, app.status);
         const buttons = tr.insertCell();
         action(buttons, 'Solicitar info', async () => {

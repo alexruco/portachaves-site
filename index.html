@@ -34,33 +34,25 @@
         <option value="Efetivo">Contrato efetivo</option><option value="Recibos Verdes">Recibos verdes / independente</option>
         <option value="Estudante">Estudante / outro</option>
       </select></label>
-      <button type="submit">Guardar inscrição</button>
+      <label>Nacionalidade <input id="nationality" type="text" maxlength="80" autocomplete="off" required></label>
+      <label>Situação documental para arrendamento <select id="documentStatus" required>
+        <option value="">Selecione</option>
+        <option value="pronta">Documentação pronta</option>
+        <option value="em_preparacao">Documentação em preparação</option>
+        <option value="a_esclarecer">Prefiro esclarecer com a equipa</option>
+      </select></label>
+      <label>Valor mensal que pretende pagar de renda (€) <input id="rentBudget" type="number" min="1" step="0.01" required></label>
+      <p>Estes dados são usados pela equipa na gestão do seu perfil. Não determinam automaticamente o acesso a um imóvel.</p>
+      <button type="submit">Guardar e ver imóveis</button>
     </form>
-    <section id="interestSection" hidden>
-      <h2>Interesse no imóvel</h2>
-      <p>O seu perfil será associado a este imóvel. Pode retirar o interesse mais tarde.</p>
-      <button id="interestButton" type="button"></button>
-    </section>
   </section>
   <p id="feedback" role="status" aria-live="polite"></p>
   <script>
     const propertyId = new URLSearchParams(location.search).get('property_id');
     const loginSection = document.getElementById('loginSection');
     const memberSection = document.getElementById('memberSection');
-    const interestSection = document.getElementById('interestSection');
-    const interestButton = document.getElementById('interestButton');
     const feedback = document.getElementById('feedback');
-    let profileId = null, interested = false;
-
-    async function refreshInterest() {
-      interestSection.hidden = !propertyId || !profileId;
-      if (interestSection.hidden) return;
-      const {data,error} = await db.from('applications').select('id')
-        .eq('property_id',propertyId).eq('profile_id',profileId).maybeSingle();
-      if (error) throw error;
-      interested = Boolean(data);
-      interestButton.textContent = interested ? 'Retirar interesse' : 'Tenho interesse neste imóvel';
-    }
+    const catalogUrl = () => 'imoveis.html' + (propertyId ? '?property_id=' + encodeURIComponent(propertyId) : '');
     async function checkSession() {
       const {data:{session},error} = await db.auth.getSession();
       if (error) throw error;
@@ -68,18 +60,22 @@
       if (!session) return;
       document.getElementById('signedInAs').textContent = session.user.email;
       const {data:profile,error:profileError} = await db.from('profiles')
-        .select('id,full_name,phone,monthly_income,occupants_count,employment_type')
+        .select('id,full_name,phone,monthly_income,occupants_count,employment_type,nationality,document_status,rent_budget')
         .eq('user_id',session.user.id).maybeSingle();
       if (profileError) throw profileError;
-      profileId = profile?.id ?? null;
+      if (profile?.nationality && profile?.document_status && profile?.rent_budget &&
+          new URLSearchParams(location.search).get('editar') !== '1') {
+        location.replace(catalogUrl()); return;
+      }
       if (profile) {
         for (const [field,value] of Object.entries({
           name:profile.full_name,phone:profile.phone,income:profile.monthly_income,
-          occupants:profile.occupants_count,employment:profile.employment_type
+          occupants:profile.occupants_count,employment:profile.employment_type,
+          nationality:profile.nationality,documentStatus:profile.document_status,
+          rentBudget:profile.rent_budget
         })) document.getElementById(field).value = value ?? '';
       }
-      await refreshInterest();
-      if (propertyId && !profileId) feedback.textContent = 'Guarde a inscrição para marcar interesse neste imóvel.';
+      if (propertyId) feedback.textContent = 'Guarde a inscrição para ver os imóveis. O imóvel do seu link aparecerá em destaque.';
     }
     document.getElementById('loginForm').addEventListener('submit',async event => {
       event.preventDefault(); const button = event.currentTarget.querySelector('button'); button.disabled = true;
@@ -100,25 +96,16 @@
           p_phone:document.getElementById('phone').value.trim(),
           p_monthly_income:Number(document.getElementById('income').value),
           p_occupants_count:Number(document.getElementById('occupants').value),
-          p_employment_type:document.getElementById('employment').value
+          p_employment_type:document.getElementById('employment').value,
+          p_nationality:document.getElementById('nationality').value.trim(),
+          p_document_status:document.getElementById('documentStatus').value,
+          p_rent_budget:Number(document.getElementById('rentBudget').value)
         });
         if (error) throw error;
-        profileId = data; await refreshInterest(); feedback.textContent = 'Inscrição guardada.';
+        if (!data) throw new Error('Perfil não guardado');
+        location.assign(catalogUrl());
       } catch(error) { feedback.textContent = 'Não foi possível guardar: ' + error.message; }
       finally { button.disabled = false; }
-    });
-    interestButton.addEventListener('click',async () => {
-      interestButton.disabled = true;
-      try {
-        const {data,error} = await db.rpc('set_property_interest',{
-          p_property_id:propertyId,p_interested:!interested
-        });
-        if (error) throw error;
-        interested = data;
-        interestButton.textContent = interested ? 'Retirar interesse' : 'Tenho interesse neste imóvel';
-        feedback.textContent = interested ? 'Interesse registado.' : 'Interesse retirado.';
-      } catch(error) { feedback.textContent = 'Não foi possível alterar o interesse: ' + error.message; }
-      finally { interestButton.disabled = false; }
     });
     document.getElementById('logout').addEventListener('click',async () => {
       await db.auth.signOut(); location.reload();
