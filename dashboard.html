@@ -17,7 +17,7 @@
   </style>
 </head>
 <body>
-  <h1>Candidaturas recebidas</h1>
+  <h1>Famílias interessadas</h1>
   <form id="loginForm">
     <label>Email de administrador <input id="adminEmail" type="email" autocomplete="email" required></label>
     <button type="submit">Receber link de acesso</button>
@@ -99,7 +99,7 @@
         action(buttons, 'Contactar', () => sendNotice(app, 'match'));
         action(buttons, 'Remover', () => changeStatus(app.id, 'removed'));
       }
-      if (data.length === 0) feedback.textContent = 'Ainda não há candidaturas.';
+      if (data.length === 0) feedback.textContent = 'Ainda não há famílias interessadas.';
     }
 
     async function checkSession() {
