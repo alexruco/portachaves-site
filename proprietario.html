@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Portachaves — Área do proprietário</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="config.js"></script>
+  <style>
+    body{font-family:system-ui,sans-serif;max-width:650px;margin:40px auto;padding:20px;color:#333}
+    form{display:flex;flex-direction:column;gap:12px}input,button{padding:10px;font:inherit}
+    button{cursor:pointer}button:disabled{opacity:.6;cursor:wait}
+    article{border:1px solid #ddd;border-radius:8px;padding:18px;margin:14px 0}
+    [hidden]{display:none!important}
+  </style>
+</head>
+<body>
+  <nav><a href="index.html">Portachaves</a></nav>
+  <h1>Área do proprietário</h1>
+  <p>Decida se o valor da renda de cada imóvel é mostrado aos candidatos. Mesmo quando está oculto, o valor pode ser usado para filtrar pelo intervalo pretendido.</p>
+  <section id="loginSection">
+    <form id="loginForm">
+      <label>Email associado ao imóvel <input id="email" type="email" autocomplete="email" required></label>
+      <button type="submit">Receber link de acesso</button>
+    </form>
+  </section>
+  <section id="ownerSection" hidden>
+    <p id="signedInAs"></p><button id="logout" type="button">Terminar sessão</button>
+    <div id="properties"></div>
+  </section>
+  <p id="feedback" role="status" aria-live="polite"></p>
+  <script>
+    const feedback=document.getElementById('feedback');
+    const loginSection=document.getElementById('loginSection');
+    const ownerSection=document.getElementById('ownerSection');
+    const properties=document.getElementById('properties');
+    async function load() {
+      const {data:{session},error:sessionError}=await db.auth.getSession();
+      if (sessionError) throw sessionError;
+      loginSection.hidden=Boolean(session);ownerSection.hidden=!session;
+      if (!session) return;
+      document.getElementById('signedInAs').textContent=session.user.email;
+      const {data,error}=await db.rpc('list_my_properties');
+      if (error) throw error;
+      properties.replaceChildren();
+      for (const property of data) {
+        const card=document.createElement('article');
+        const heading=document.createElement('h2');
+        heading.textContent=property.title || 'Imóvel sem título';
+        card.append(heading);
+        const rent=document.createElement('p');
+        rent.textContent='Renda: '+Number(property.monthly_rent).toLocaleString('pt-PT',{style:'currency',currency:'EUR'})+' / mês';
+        card.append(rent);
+        const label=document.createElement('label');
+        const checkbox=document.createElement('input');
+        checkbox.type='checkbox';checkbox.checked=property.show_rent;
+        checkbox.addEventListener('change',async()=>{
+          checkbox.disabled=true;
+          const {error:updateError}=await db.rpc('set_my_property_rent_visibility',{
+            p_property_id:property.id,p_show_rent:checkbox.checked
+          });
+          if (updateError) {
+            checkbox.checked=!checkbox.checked;
+            feedback.textContent='Não foi possível guardar: '+updateError.message;
+          } else feedback.textContent=checkbox.checked ?
+            'A renda de '+property.title+' está visível aos candidatos.' :
+            'A renda de '+property.title+' está oculta aos candidatos.';
+          checkbox.disabled=false;
+        });
+        label.append(checkbox,document.createTextNode(' Mostrar valor da renda aos candidatos'));
+        card.append(label);properties.append(card);
+      }
+      if (!data.length) feedback.textContent='Não há imóveis associados a este email.';
+    }
+    document.getElementById('loginForm').addEventListener('submit',async event=>{
+      event.preventDefault();const button=event.currentTarget.querySelector('button');button.disabled=true;
+      try {
+        const {error}=await db.auth.signInWithOtp({
+          email:document.getElementById('email').value.trim(),
+          options:{emailRedirectTo:location.href}
+        });
+        if (error) throw error;
+        feedback.textContent='Enviámos um link de acesso para o seu email.';
+      } catch(error) {feedback.textContent='Não foi possível enviar o link: '+error.message;}
+      finally {button.disabled=false;}
+    });
+    document.getElementById('logout').addEventListener('click',async()=>{
+      await db.auth.signOut();location.reload();
+    });
+    load().catch(error=>{feedback.textContent='Não foi possível carregar os imóveis: '+error.message;});
+  </script>
+</body>
+</html>
