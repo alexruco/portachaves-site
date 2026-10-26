@@ -37,12 +37,13 @@
       <label>Nacionalidade <input id="nationality" type="text" maxlength="80" autocomplete="off" required></label>
       <label>Situação documental para arrendamento <select id="documentStatus" required>
         <option value="">Selecione</option>
-        <option value="pronta">Documentação pronta</option>
-        <option value="em_preparacao">Documentação em preparação</option>
-        <option value="a_esclarecer">Prefiro esclarecer com a equipa</option>
+        <option value="sem_autorizacao">Sem autorização de residência</option>
+        <option value="temporaria">Com autorização de residência temporária</option>
+        <option value="permanente">Com autorização de residência permanente</option>
       </select></label>
-      <label>Valor mensal que pretende pagar de renda (€) <input id="rentBudget" type="number" min="1" step="0.01" required></label>
-      <p>Estes dados são usados pela equipa na gestão do seu perfil. Não determinam automaticamente o acesso a um imóvel.</p>
+      <label>Renda mensal mínima que procura (€) <input id="rentBudgetMin" type="number" min="1" step="0.01" required></label>
+      <label>Renda mensal máxima que pretende pagar (€) <input id="rentBudgetMax" type="number" min="1" step="0.01" required></label>
+      <p>A situação documental não é usada para selecionar automaticamente imóveis. O intervalo de renda ajuda a filtrar resultados.</p>
       <button type="submit">Guardar e ver imóveis</button>
     </form>
   </section>
@@ -60,10 +61,11 @@
       if (!session) return;
       document.getElementById('signedInAs').textContent = session.user.email;
       const {data:profile,error:profileError} = await db.from('profiles')
-        .select('id,full_name,phone,monthly_income,occupants_count,employment_type,nationality,document_status,rent_budget')
+        .select('id,full_name,phone,monthly_income,occupants_count,employment_type,nationality,document_status,rent_budget_min,rent_budget_max')
         .eq('user_id',session.user.id).maybeSingle();
       if (profileError) throw profileError;
-      if (profile?.nationality && profile?.document_status && profile?.rent_budget &&
+      if (profile?.nationality && ['sem_autorizacao','temporaria','permanente'].includes(profile?.document_status) &&
+          profile?.rent_budget_min && profile?.rent_budget_max &&
           new URLSearchParams(location.search).get('editar') !== '1') {
         location.replace(catalogUrl()); return;
       }
@@ -72,7 +74,7 @@
           name:profile.full_name,phone:profile.phone,income:profile.monthly_income,
           occupants:profile.occupants_count,employment:profile.employment_type,
           nationality:profile.nationality,documentStatus:profile.document_status,
-          rentBudget:profile.rent_budget
+          rentBudgetMin:profile.rent_budget_min,rentBudgetMax:profile.rent_budget_max
         })) document.getElementById(field).value = value ?? '';
       }
       if (propertyId) feedback.textContent = 'Guarde a inscrição para ver os imóveis. O imóvel do seu link aparecerá em destaque.';
@@ -91,6 +93,9 @@
     document.getElementById('profileForm').addEventListener('submit',async event => {
       event.preventDefault(); const button = event.currentTarget.querySelector('button'); button.disabled = true;
       try {
+        const min=Number(document.getElementById('rentBudgetMin').value);
+        const max=Number(document.getElementById('rentBudgetMax').value);
+        if (max<min) throw new Error('A renda máxima deve ser igual ou superior à mínima.');
         const {data,error} = await db.rpc('save_family_profile',{
           p_full_name:document.getElementById('name').value.trim(),
           p_phone:document.getElementById('phone').value.trim(),
@@ -99,7 +104,7 @@
           p_employment_type:document.getElementById('employment').value,
           p_nationality:document.getElementById('nationality').value.trim(),
           p_document_status:document.getElementById('documentStatus').value,
-          p_rent_budget:Number(document.getElementById('rentBudget').value)
+          p_rent_budget_min:min,p_rent_budget_max:max
         });
         if (error) throw error;
         if (!data) throw new Error('Perfil não guardado');

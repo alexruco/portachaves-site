@@ -24,6 +24,10 @@
   </form>
   <section id="panel" hidden>
     <button id="logout" type="button">Terminar sessão</button>
+    <h2>Visibilidade da renda</h2>
+    <p>Registe aqui a escolha do proprietário para cada imóvel.</p>
+    <div id="propertyVisibility"></div>
+    <h2>Interesses recebidos</h2>
     <table><thead><tr><th>Nome</th><th>Imóvel</th><th>Rendimento</th><th>Renda pretendida</th><th>Taxa de esforço</th><th>Situação profissional</th><th>Nacionalidade</th><th>Documentação</th><th>Estado</th><th>Ações</th></tr></thead><tbody id="applicationsBody"></tbody></table>
   </section>
   <p id="feedback" role="status" aria-live="polite"></p>
@@ -32,6 +36,33 @@
     const panel = document.getElementById('panel');
     const feedback = document.getElementById('feedback');
     const tbody = document.getElementById('applicationsBody');
+    const propertyVisibility = document.getElementById('propertyVisibility');
+
+    async function loadProperties() {
+      const { data, error } = await db.from('properties')
+        .select('id,title,show_rent').order('created_at', { ascending: false });
+      if (error) throw error;
+      propertyVisibility.replaceChildren();
+      for (const property of data) {
+        const label = document.createElement('label');
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = property.show_rent;
+        checkbox.addEventListener('change', async () => {
+          checkbox.disabled = true;
+          const { error: updateError } = await db.from('properties')
+            .update({ show_rent: checkbox.checked }).eq('id', property.id);
+          if (updateError) {
+            checkbox.checked = !checkbox.checked;
+            feedback.textContent = 'Não foi possível atualizar a visibilidade: ' + updateError.message;
+          } else feedback.textContent = 'Escolha do proprietário guardada.';
+          checkbox.disabled = false;
+        });
+        label.append(checkbox, document.createTextNode(' Mostrar renda de ' + (property.title || 'imóvel sem título')));
+        propertyVisibility.append(label, document.createElement('br'));
+      }
+      if (!data.length) propertyVisibility.textContent = 'Ainda não há imóveis.';
+    }
 
     function cell(row, value) {
       const td = row.insertCell();
@@ -74,7 +105,7 @@
 
     async function loadApplications() {
       const { data, error } = await db.from('applications')
-        .select('id,status,profiles(full_name,email,phone,monthly_income,employment_type,nationality,document_status,rent_budget),properties(title,monthly_rent,landlord_email)')
+        .select('id,status,profiles(full_name,email,phone,monthly_income,employment_type,nationality,document_status,rent_budget_min,rent_budget_max),properties(title,monthly_rent,landlord_email)')
         .order('created_at', { ascending: false });
       if (error) throw error;
       tbody.replaceChildren();
@@ -86,13 +117,14 @@
         cell(tr, profile.full_name);
         cell(tr, property.title);
         cell(tr, `${profile.monthly_income} €`);
-        cell(tr, profile.rent_budget == null ? '—' : `${profile.rent_budget} €`);
+        cell(tr, profile.rent_budget_min == null || profile.rent_budget_max == null ?
+          '—' : `${profile.rent_budget_min}–${profile.rent_budget_max} €`);
         const income = Number(profile.monthly_income);
         const rent = Number(property.monthly_rent);
         cell(tr, income > 0 && Number.isFinite(rent) ? `${(rent / income * 100).toFixed(1)}%` : '—');
         cell(tr, profile.employment_type);
         cell(tr, profile.nationality);
-        cell(tr, ({pronta:'Pronta',em_preparacao:'Em preparação',a_esclarecer:'A esclarecer'})[profile.document_status] || '—');
+        cell(tr, ({sem_autorizacao:'Sem autorização',temporaria:'Autorização temporária',permanente:'Autorização permanente'})[profile.document_status] || '—');
         cell(tr, app.status);
         const buttons = tr.insertCell();
         action(buttons, 'Solicitar info', async () => {
@@ -121,6 +153,7 @@
       }
       loginForm.hidden = true;
       panel.hidden = false;
+      await loadProperties();
       await loadApplications();
     }
 

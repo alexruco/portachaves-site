@@ -22,6 +22,7 @@
   <nav><a href="index.html?editar=1" id="editLink">Editar inscrição</a><a href="dashboard.html">Painel de gestão</a><button id="logout" type="button">Terminar sessão</button></nav>
   <h1>Imóveis no Portachaves</h1>
   <p>Veja os detalhes e use a chave para guardar os imóveis que lhe interessam. Pode alterar a escolha a qualquer momento.</p>
+  <label><input id="budgetFilter" type="checkbox"> Mostrar apenas imóveis dentro do meu intervalo de renda</label>
   <p id="feedback" role="status" aria-live="polite"></p>
   <section id="cards" aria-label="Imóveis disponíveis"></section>
   <script>
@@ -36,7 +37,7 @@
       if (className) p.className=className;
       return p;
     }
-    function makeCard(property,saved,budget) {
+    function makeCard(property,saved) {
       const card=document.createElement('article');
       if (property.id===highlightedId) {
         card.classList.add('highlight');
@@ -46,12 +47,12 @@
       heading.textContent=property.title || 'Imóvel sem título';
       card.append(heading);
       card.append(info(property.location || 'Localização não indicada','meta'));
-      const rent=Number(property.monthly_rent);
-      card.append(info(Number.isFinite(rent) ? rent.toLocaleString('pt-PT',{style:'currency',currency:'EUR'}) + ' / mês' : 'Renda sob consulta','rent'));
+      const rent=property.displayed_rent==null ? null : Number(property.displayed_rent);
+      card.append(info(rent!=null && Number.isFinite(rent) ?
+        rent.toLocaleString('pt-PT',{style:'currency',currency:'EUR'}) + ' / mês' :
+        'Renda não divulgada pelo proprietário','rent'));
       if (property.description) card.append(info(property.description));
-      if (Number.isFinite(rent) && budget>0) {
-        card.append(info(rent<=budget ? 'Dentro do valor mensal indicado' : 'Acima do valor mensal indicado','meta'));
-      }
+      card.append(info(property.within_budget ? 'Dentro do seu intervalo de renda' : 'Fora do seu intervalo de renda','meta'));
       const button=document.createElement('button');
       button.type='button'; button.className='interest';
       button.setAttribute('aria-pressed',String(saved.has(property.id)));
@@ -81,9 +82,10 @@
       if (sessionError) throw sessionError;
       if (!session) { location.replace('index.html'+location.search); return; }
       const {data:profile,error:profileError}=await db.from('profiles')
-        .select('id,rent_budget,nationality,document_status').eq('user_id',session.user.id).maybeSingle();
+        .select('id,rent_budget_min,rent_budget_max,nationality,document_status').eq('user_id',session.user.id).maybeSingle();
       if (profileError) throw profileError;
-      if (!profile?.rent_budget || !profile?.nationality || !profile?.document_status) {
+      if (!profile?.rent_budget_min || !profile?.rent_budget_max || !profile?.nationality ||
+          !['sem_autorizacao','temporaria','permanente'].includes(profile?.document_status)) {
         location.replace('index.html'+location.search); return;
       }
       const [{data:properties,error:propertiesError},{data:interests,error:interestsError}]=await Promise.all([
@@ -93,12 +95,21 @@
       if (propertiesError) throw propertiesError;
       if (interestsError) throw interestsError;
       const saved=new Set((interests||[]).map(item=>item.property_id));
-      const budget=Number(profile.rent_budget);
       properties.sort((a,b)=>
         Number(b.id===highlightedId)-Number(a.id===highlightedId) ||
-        Number(Number(b.monthly_rent)<=budget)-Number(Number(a.monthly_rent)<=budget)
+        Number(b.within_budget)-Number(a.within_budget)
       );
-      cards.replaceChildren(...properties.map(property=>makeCard(property,saved,budget)));
+      function render() {
+        const filtered=document.getElementById('budgetFilter').checked ?
+          properties.filter(property=>property.within_budget) : properties;
+        cards.replaceChildren(...filtered.map(property=>makeCard(property,saved)));
+        if (properties.length && !filtered.length)
+          feedback.textContent='Não há imóveis dentro do intervalo de renda indicado.';
+        else if (feedback.textContent==='Não há imóveis dentro do intervalo de renda indicado.')
+          feedback.textContent='';
+      }
+      document.getElementById('budgetFilter').addEventListener('change',render);
+      render();
       if (!properties.length) feedback.textContent='Ainda não há imóveis disponíveis.';
       else if (highlightedId && !properties.some(property=>property.id===highlightedId))
         feedback.textContent='O imóvel do link já não está disponível. Veja os outros imóveis abaixo.';
